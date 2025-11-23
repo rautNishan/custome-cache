@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/rautNishan/custome-cache/config"
 	"github.com/rautNishan/custome-cache/protocol"
@@ -22,22 +23,30 @@ func startServer() {
 	if err != nil {
 		log.Fatal("Error listning to server")
 	}
+	var totalConnection int64
 	for {
+
 		conn, err := listner.Accept()
 		log.Printf("New connection: %s\n", conn.RemoteAddr())
 		if err != nil {
 			fmt.Printf("Error while reading from connect: %v\n", err)
 		}
-		handleConnection(conn)
+		go handleConnection(conn, &totalConnection)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+// Per client connection handle
+func handleConnection(conn net.Conn, totalConnection *int64) {
+	atomic.AddInt64(totalConnection, 1)
+	currentCount := atomic.LoadInt64(totalConnection)
 	defer func() {
 		conn.Close()
-		log.Printf("Connection closed: %s )\n", conn.RemoteAddr())
+		atomic.AddInt64(totalConnection, -1)
+		currentCount := atomic.LoadInt64(totalConnection)
+		log.Println("Connection disconnected", conn.RemoteAddr(), "Total connections: ", currentCount)
 	}()
 
+	log.Println("New connection establisehd: ", conn.RemoteAddr(), "Total connections: ", currentCount)
 	buff := make([]byte, 512)
 
 	accumulationBuffer := make([]byte, 0, 4096)
@@ -45,26 +54,20 @@ func handleConnection(conn net.Conn) {
 	for {
 		n, err := conn.Read(buff)
 		if err != nil {
-			conn.Close()
-			log.Println("Connection disconnected", conn.RemoteAddr())
 			break
 		}
 		accumulationBuffer = append(accumulationBuffer, buff[:n]...)
 		fmt.Println("Acc buffer: ", string(accumulationBuffer[:]))
-		// Decode one
+		//Inner for loop in case we miss the ending segments (/r/n in the next segment)
 		for {
-			val, totalRead, err := protocol.DecodeOne(accumulationBuffer[:])
+			val, err := protocol.Decode(accumulationBuffer[:])
 			if err != nil {
 				log.Printf("Error: %v", err)
-				return
-			}
-			log.Println(totalRead)
-			if totalRead == 0 {
 				break
 			}
 
-			if val != "" {
-				log.Println("Decoded: ", val)
+			if val == nil {
+				log.Println("No ending point, data might be coming")
 				break
 			}
 

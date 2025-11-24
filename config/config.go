@@ -18,12 +18,10 @@ func InitializeConfig() Config {
 	portStr := os.Getenv("PORT")
 
 	if config.Host == "" {
-		log.Println("Initializing default Host: Localhost")
 		config.Host = "localhost"
 	}
 
 	if portStr == "" {
-		log.Println("Initializing default Port: 3769")
 		portStr = "3769"
 	}
 	intPort, err := strconv.Atoi(portStr)

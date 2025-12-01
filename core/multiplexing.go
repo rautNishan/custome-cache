@@ -113,7 +113,20 @@ func runForLinux(cnfg *config.Config) {
 				}
 
 			} else {
-				//incoming data
+				buf := make([]byte, 1024)
+				n, err := syscall.Read(int(events[i].Fd), buf)
+				if err != nil {
+					fmt.Println("read error:", err)
+					syscall.Close(int(events[i].Fd))
+					continue
+				}
+
+				if n == 0 {
+					fmt.Println("client disconnected")
+					syscall.Close(int(events[i].Fd))
+					continue
+				}
+				fmt.Println("Received:", string(buf[:n]))
 			}
 		}
 	}

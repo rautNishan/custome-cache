@@ -1,3 +1,4 @@
+// Please take reference https://man7.org/linux/man-pages/man7/epoll.7.html
 package core
 
 import (
@@ -21,7 +22,7 @@ func CreateAndHandelConnection(cnfg *config.Config) {
 func runForLinux(cnfg *config.Config) {
 	max_client := 10000
 	var events []syscall.EpollEvent = make([]syscall.EpollEvent, max_client)
-	serverFileDescriptor, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	serverFileDescriptor, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0) //what clients connect to
 	if err != nil {
 		PanicOnErr("failed to create listing file descriptor", err)
 	}
@@ -65,7 +66,8 @@ func runForLinux(cnfg *config.Config) {
 	}
 	log.Println("Server listning on host: ", cnfg.Host, "and port: ", cnfg.Port)
 
-	epollFileDescriptor, err := syscall.EpollCreate1(0)
+	//creates a new epoll instance and returns a file descriptor referring to that instance.
+	epollFileDescriptor, err := syscall.EpollCreate1(0) //monitors the server socket AND all client sockets (This is not a socket)
 
 	if err != nil {
 		PanicOnErr("failed to create epoll fd", err)
@@ -73,10 +75,10 @@ func runForLinux(cnfg *config.Config) {
 
 	var socketServerEvents syscall.EpollEvent = syscall.EpollEvent{
 		Events: syscall.EPOLLIN,
-		Fd:     int32(serverFileDescriptor),
+		Fd:     int32(serverFileDescriptor), //for a listening socket, "ready to read" means "a client is trying to connect"
 	}
 
-	err = syscall.EpollCtl(epollFileDescriptor, syscall.EPOLL_CTL_ADD, serverFileDescriptor, &socketServerEvents)
+	err = syscall.EpollCtl(epollFileDescriptor, syscall.EPOLL_CTL_ADD, serverFileDescriptor, &socketServerEvents) //registering the listening socket with epoll
 	if err != nil {
 		PanicOnErr("failed to read incoming event to the server", err)
 	}

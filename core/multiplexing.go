@@ -84,25 +84,20 @@ func runForLinux(cnfg *config.Config) {
 	}
 
 	for {
-		fmt.Println("Before wait")
 		readyEvents, err := syscall.EpollWait(epollFileDescriptor, events[:], -1)
-		fmt.Println("After wait")
 		if err != nil {
 			fmt.Printf("Error in epoll wait: %v\n", err)
 			continue
 		}
-
 		for i := 0; i < readyEvents; i++ {
-			fmt.Println("Inside ready events")
 			//If client is trying to connect to our server
 			//Incoming connection
 			if int(events[i].Fd) == serverFileDescriptor { //Epollin
-				clientFileDescriptor, socketAddress, err := syscall.Accept(serverFileDescriptor)
+				clientFileDescriptor, _, err := syscall.Accept(serverFileDescriptor)
 				if err != nil {
 					fmt.Println("Error while accepting the connection: ", err)
 					continue
 				}
-				fmt.Println("This is socket address: ", socketAddress)
 				syscall.SetNonblock(clientFileDescriptor, true)
 
 				var socketClientEvent syscall.EpollEvent = syscall.EpollEvent{
@@ -117,15 +112,28 @@ func runForLinux(cnfg *config.Config) {
 			} else {
 				buf := make([]byte, 1024)
 				n, err := syscall.Read(int(events[i].Fd), buf)
-				if err != nil {
-					fmt.Println("read error:", err)
+
+				// In this n==0 indicates a graceful shutdown (EFO)
+				if n == 0 {
+					//Remove fd from the interest list
+					err = syscall.EpollCtl(epollFileDescriptor, syscall.EPOLL_CTL_DEL, int(events[i].Fd), nil)
+					if err != nil {
+						fmt.Printf("Error removing fd from epoll: %v\n", err)
+					}
+					//Close the socket
 					syscall.Close(int(events[i].Fd))
+					log.Println("Client Disconnected")
 					continue
 				}
 
-				if n == 0 {
-					fmt.Println("client disconnected")
+				if err != nil {
+					fmt.Println("read error:", err)
+					err = syscall.EpollCtl(epollFileDescriptor, syscall.EPOLL_CTL_DEL, int(events[i].Fd), nil)
+					if err != nil {
+						fmt.Printf("Error removing fd from epoll: %v\n", err)
+					}
 					syscall.Close(int(events[i].Fd))
+					log.Println("Client Disconnected")
 					continue
 				}
 				fmt.Println("Received:", string(buf[:n]))

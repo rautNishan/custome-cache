@@ -4,27 +4,27 @@ import (
 	"testing"
 )
 
-// func TestDecode(t *testing.T) {
-// 	inputes := map[string]interface{}{
-// 		"+SET\r\n":      "SET",
-// 		"+GET\r\n":      "GET",
-// 		"HEHE":          nil,
-// 		"+HEHE\r\n":     "HEHE",
-// 		"+HEHE\r\n\r\n": "HEHE",
-// 		"+GET":          nil,
-// 	}
+func TestDecode(t *testing.T) {
+	inputes := map[string]interface{}{
+		"+SET\r\n":      "SET",
+		"+GET\r\n":      "GET",
+		"HEHE":          nil,
+		"+HEHE\r\n":     "HEHE",
+		"+HEHE\r\n\r\n": "HEHE",
+		"+GET":          nil,
+	}
 
-// 	for k, v := range inputes {
-// 		val, _, err := Decode([]byte(k))
-// 		if err != nil {
-// 			t.Fatalf("unexpected error for input '%s': %v", k, err)
-// 		}
+	for k, v := range inputes {
+		val, _, err := Decode([]byte(k))
+		if err != nil {
+			t.Fatalf("unexpected error for input '%s': %v", k, err)
+		}
 
-// 		if val != v {
-// 			t.Fatalf("for input '%s' expected '%s', got '%v'", k, v, val)
-// 		}
-// 	}
-// }
+		if val != v {
+			t.Fatalf("for input '%s' expected '%s', got '%v'", k, v, val)
+		}
+	}
+}
 
 // func TestDecodeOne(t *testing.T) {
 // 	inputes := map[string]interface{}{

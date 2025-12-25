@@ -3,6 +3,7 @@ package core
 import (
 	"log"
 	"runtime"
+	"syscall"
 )
 
 type OS int
@@ -32,4 +33,14 @@ func DetectOS() OS {
 	default:
 		return UnknownOS
 	}
+}
+
+func RemoveFromIntrestListAndCloseConnection(epollFD int, toRemoveFD int) error {
+	err := syscall.EpollCtl(epollFD, syscall.EPOLL_CTL_DEL, toRemoveFD, nil)
+	if err != nil {
+		return err
+	}
+	syscall.Close(toRemoveFD)
+	log.Println("Client Disconnected")
+	return nil
 }

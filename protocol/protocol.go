@@ -3,7 +3,6 @@ package protocol
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"strconv"
 )
 
@@ -87,14 +86,11 @@ func readBulkString(b []byte) (string, int, error) {
 }
 
 func readArray(b []byte) ([]interface{}, int, error) {
-	fmt.Printf("This is byte: %q\n", string(b))
 	i := bytes.Index(b, []byte(CLRF))
 	if i == -1 {
 		return nil, 0, nil
 	}
-	fmt.Println("This is i: ", i)
 	count, err := strconv.Atoi(string(b[1:i]))
-	fmt.Println("This is count: ", count)
 	if err != nil {
 		return nil, 0, err
 	}

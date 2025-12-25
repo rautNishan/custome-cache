@@ -8,11 +8,12 @@ import (
 	"syscall"
 
 	"github.com/rautNishan/custome-cache/config"
+	"github.com/rautNishan/custome-cache/protocol"
 )
 
 func CreateAndHandelConnection(cnfg *config.Config) {
 	currentlyUserOs := DetectOS()
-	log.Println("Client os: ", currentlyUserOs) //For debugging
+	log.Println("Client os: ", currentlyUserOs)
 	switch currentlyUserOs {
 	case 1:
 		runForLinux(cnfg)
@@ -112,32 +113,23 @@ func runForLinux(cnfg *config.Config) {
 			} else {
 				buf := make([]byte, 1024)
 				n, err := syscall.Read(int(events[i].Fd), buf)
-
 				// In this n==0 indicates a graceful shutdown (EFO)
-				if n == 0 {
-					//Remove fd from the interest list
-					err = syscall.EpollCtl(epollFileDescriptor, syscall.EPOLL_CTL_DEL, int(events[i].Fd), nil)
+				if n == 0 || err != nil {
+					err = RemoveFromIntrestListAndCloseConnection(epollFileDescriptor, int(events[i].Fd))
 					if err != nil {
 						fmt.Printf("Error removing fd from epoll: %v\n", err)
 					}
-					//Close the socket
-					syscall.Close(int(events[i].Fd))
-					log.Println("Client Disconnected")
 					continue
 				}
-
-				if err != nil {
-					fmt.Println("read error:", err)
-					err = syscall.EpollCtl(epollFileDescriptor, syscall.EPOLL_CTL_DEL, int(events[i].Fd), nil)
+				args, read, err := protocol.Decode(buf)
+				if err != nil || read == 0 {
+					err = RemoveFromIntrestListAndCloseConnection(epollFileDescriptor, int(events[i].Fd))
 					if err != nil {
 						fmt.Printf("Error removing fd from epoll: %v\n", err)
 					}
-					syscall.Close(int(events[i].Fd))
-					log.Println("Client Disconnected")
 					continue
 				}
-				fmt.Println("Received:", string(buf[:n]))
-
+				fmt.Println(args)
 			}
 		}
 	}

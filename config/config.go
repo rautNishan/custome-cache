@@ -22,7 +22,7 @@ func InitializeConfig() Config {
 	}
 
 	if portStr == "" {
-		portStr = "3769"
+		portStr = "3000"
 	}
 	intPort, err := strconv.Atoi(portStr)
 	if err != nil {

@@ -7,8 +7,9 @@ import (
 )
 
 type Config struct {
-	Host string
-	Port int
+	Host      string
+	Port      int
+	MaxEvents int
 }
 
 func InitializeConfig() Config {
@@ -29,5 +30,10 @@ func InitializeConfig() Config {
 		log.Fatal("Error while initializeing port")
 	}
 	config.Port = intPort
+
+	if config.MaxEvents == 0 {
+		config.MaxEvents = 1000
+	}
+
 	return config
 }

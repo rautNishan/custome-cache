@@ -12,6 +12,7 @@ import (
 )
 
 func CreateAndHandelConnection(cnfg *config.Config) {
+	//Why this works (https://stackoverflow.com/questions/20424623/proper-way-to-choose-func-at-runtime-for-different-operating-systems)
 	mp, err := MultiPlexerInit(cnfg.MaxEvents)
 	if err != nil {
 		PanicOnErr("failed to initialize multiplexer", err)

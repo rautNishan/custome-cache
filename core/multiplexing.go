@@ -18,14 +18,27 @@ func CreateAndHandelConnection(cnfg *config.Config) {
 		PanicOnErr("failed to initialize multiplexer", err)
 	}
 	//Close multiplexer fd
-	defer mp.Close()
+
 	sFd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		PanicOnErr("failed to create listing file descriptor", err)
 	}
-	//Close server fd
-	defer syscall.Close(sFd)
 
+	//TODO handel os signals for gracefull shutdown so port use error can be avoided
+	//(https://serverfault.com/questions/738300/why-are-connections-in-fin-wait2-state-not-closed-by-the-linux-kernel)
+	//Exact error on my pc for command : sudo netstat -tanp
+	// (tcp        0      0 127.0.0.1:3000          127.0.0.1:52568         FIN_WAIT2   -)
+	defer func() {
+		multiplexerError := mp.Close()
+		if multiplexerError != nil {
+			fmt.Println("Error closing multi plexer: ", err)
+		}
+		serverCloserError := syscall.Close(sFd)
+		if serverCloserError != nil {
+			fmt.Println("Error closing server: ", err)
+		}
+		fmt.Println("Bye ^_^")
+	}()
 	err = syscall.SetNonblock(sFd, true)
 	if err != nil {
 		PanicOnErr("failed to set non-blocking on listning file descriptor", err)
@@ -70,7 +83,9 @@ func CreateAndHandelConnection(cnfg *config.Config) {
 	}
 
 	for {
+		log.Println("Before wait")
 		readyEvents, err := mp.Wait()
+		log.Println("After Wait")
 		if err != nil {
 			fmt.Printf("Error in epoll wait: %v\n", err)
 			continue
@@ -113,125 +128,22 @@ func CreateAndHandelConnection(cnfg *config.Config) {
 					continue
 				}
 				fmt.Println(args)
+
+				argvRaw, ok := args.([]interface{})
+				if !ok || len(argvRaw) == 0 {
+					continue
+				}
+
+				cmd, ok := argvRaw[0].(string)
+				if !ok {
+					continue
+				}
+
+				if cmd == "PING" || cmd == "ping" {
+					syscall.Write(ev.Fd, []byte("+PONG\r\n"))
+				}
 			}
 		}
 
 	}
 }
-
-// // TODO (abstract)
-// func runForLinux(cnfg *config.Config) {
-// 	max_client := 10000
-// 	var events []syscall.EpollEvent = make([]syscall.EpollEvent, max_client)
-// 	serverFileDescriptor, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0) //what clients connect to
-// 	if err != nil {
-// 		PanicOnErr("failed to create listing file descriptor", err)
-// 	}
-// 	defer syscall.Close(serverFileDescriptor)
-
-// 	err = syscall.SetNonblock(serverFileDescriptor, true)
-// 	if err != nil {
-// 		PanicOnErr("failed to set non-blocking on listning file descriptor", err)
-// 	}
-
-// 	ips, err := net.LookupIP(cnfg.Host)
-// 	if err != nil {
-// 		PanicOnErr("DNS lookup failed", err)
-// 	}
-
-// 	var ipv4 net.IP
-// 	for _, ip := range ips {
-// 		if v4 := ip.To4(); v4 != nil {
-// 			ipv4 = v4
-// 			break
-// 		}
-// 	}
-
-// 	if ipv4 == nil {
-// 		PanicOnErr("no IPv4 found for host", nil)
-// 	}
-
-// 	log.Println("IP: ", ipv4)
-
-// 	err = syscall.Bind(serverFileDescriptor, &syscall.SockaddrInet4{
-// 		Port: cnfg.Port,
-// 		Addr: [4]byte{ipv4[0], ipv4[1], ipv4[2], ipv4[3]},
-// 	})
-// 	if err != nil {
-// 		PanicOnErr("bind failed", err)
-// 	}
-
-// 	err = syscall.Listen(serverFileDescriptor, max_client)
-// 	if err != nil {
-// 		PanicOnErr("listen failed", err)
-// 	}
-// 	log.Println("Server listning on host: ", cnfg.Host, "and port: ", cnfg.Port)
-
-// 	//creates a new epoll instance and returns a file descriptor referring to that instance.
-// 	epollFileDescriptor, err := syscall.EpollCreate1(0) //monitors the server socket AND all client sockets (This is not a socket)
-
-// 	if err != nil {
-// 		PanicOnErr("failed to create epoll fd", err)
-// 	}
-
-// 	var socketServerEvents syscall.EpollEvent = syscall.EpollEvent{
-// 		Events: syscall.EPOLLIN,
-// 		Fd:     int32(serverFileDescriptor), //for a listening socket, "ready to read" means "a client is trying to connect"
-// 	}
-
-// 	err = syscall.EpollCtl(epollFileDescriptor, syscall.EPOLL_CTL_ADD, serverFileDescriptor, &socketServerEvents) //registering the listening socket with epoll
-// 	if err != nil {
-// 		PanicOnErr("failed to read incoming event to the server", err)
-// 	}
-
-// 	for {
-// 		readyEvents, err := syscall.EpollWait(epollFileDescriptor, events[:], -1)
-// 		if err != nil {
-// 			fmt.Printf("Error in epoll wait: %v\n", err)
-// 			continue
-// 		}
-// 		for i := 0; i < readyEvents; i++ {
-// 			//If client is trying to connect to our server
-// 			//Incoming connection
-// 			if int(events[i].Fd) == serverFileDescriptor { //Epollin
-// 				clientFileDescriptor, _, err := syscall.Accept(serverFileDescriptor)
-// 				if err != nil {
-// 					fmt.Println("Error while accepting the connection: ", err)
-// 					continue
-// 				}
-// 				syscall.SetNonblock(clientFileDescriptor, true)
-
-// 				var socketClientEvent syscall.EpollEvent = syscall.EpollEvent{
-// 					Events: syscall.EPOLLIN,
-// 					Fd:     int32(clientFileDescriptor),
-// 				}
-// 				err = syscall.EpollCtl(epollFileDescriptor, syscall.EPOLL_CTL_ADD, clientFileDescriptor, &socketClientEvent)
-// 				if err != nil {
-// 					PanicOnErr("failed to read incoming event to the server", err)
-// 				}
-
-// 			} else {
-// 				buf := make([]byte, 1024)
-// 				n, err := syscall.Read(int(events[i].Fd), buf)
-// 				// In this n==0 indicates a graceful shutdown (EFO)
-// 				if n == 0 || err != nil {
-// 					err = RemoveFromIntrestListAndCloseConnection(epollFileDescriptor, int(events[i].Fd))
-// 					if err != nil {
-// 						fmt.Printf("Error removing fd from epoll: %v\n", err)
-// 					}
-// 					continue
-// 				}
-// 				args, read, err := protocol.Decode(buf)
-// 				if err != nil || read == 0 {
-// 					err = RemoveFromIntrestListAndCloseConnection(epollFileDescriptor, int(events[i].Fd))
-// 					if err != nil {
-// 						fmt.Printf("Error removing fd from epoll: %v\n", err)
-// 					}
-// 					continue
-// 				}
-// 				fmt.Println(args)
-// 			}
-// 		}
-// 	}
-
-// }

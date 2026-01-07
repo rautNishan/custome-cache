@@ -4,9 +4,9 @@ package core
 import (
 	"fmt"
 	"log"
-	"net"
 	"syscall"
 
+	"github.com/rautNishan/custome-cache/common"
 	"github.com/rautNishan/custome-cache/config"
 	"github.com/rautNishan/custome-cache/protocol"
 )
@@ -15,71 +15,38 @@ func CreateAndHandelConnection(cnfg *config.Config) {
 	//Why this works (https://stackoverflow.com/questions/20424623/proper-way-to-choose-func-at-runtime-for-different-operating-systems)
 	mp, err := MultiPlexerInit(cnfg.MaxEvents)
 	if err != nil {
-		PanicOnErr("failed to initialize multiplexer", err)
-	}
-	//Close multiplexer fd
-
-	sFd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
-	if err != nil {
-		PanicOnErr("failed to create listing file descriptor", err)
+		common.PanicOnErr("failed to initialize multiplexer", err)
 	}
 
 	//TODO handel os signals for gracefull shutdown so port use error can be avoided
 	//(https://serverfault.com/questions/738300/why-are-connections-in-fin-wait2-state-not-closed-by-the-linux-kernel)
 	//Exact error on my pc for command : sudo netstat -tanp
 	// (tcp        0      0 127.0.0.1:3000          127.0.0.1:52568         FIN_WAIT2   -)
-	defer func() {
-		multiplexerError := mp.Close()
-		if multiplexerError != nil {
-			fmt.Println("Error closing multi plexer: ", err)
-		}
-		serverCloserError := syscall.Close(sFd)
-		if serverCloserError != nil {
-			fmt.Println("Error closing server: ", err)
-		}
-		fmt.Println("Bye ^_^")
-	}()
-	err = syscall.SetNonblock(sFd, true)
-	if err != nil {
-		PanicOnErr("failed to set non-blocking on listning file descriptor", err)
-	}
+	// sigs := make(chan os.Signal, 1)
+	// signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
 
-	ips, err := net.LookupIP(cnfg.Host)
-	if err != nil {
-		PanicOnErr("DNS lookup failed", err)
-	}
+	// defer func() {
+	// 	multiplexerError := mp.Close()
+	// 	if multiplexerError != nil {
+	// 		fmt.Println("Error closing multi plexer: ", err)
+	// 	}
+	// 	serverCloserError := syscall.Close(sFd)
+	// 	if serverCloserError != nil {
+	// 		fmt.Println("Error closing server: ", err)
+	// 	}
+	// 	fmt.Println("Bye ^_^")
+	// }()
 
-	var ipv4 net.IP
-	for _, ip := range ips {
-		if v4 := ip.To4(); v4 != nil {
-			ipv4 = v4
-			break
-		}
-	}
-
-	if ipv4 == nil {
-		PanicOnErr("no IPv4 found for host", nil)
-	}
-
-	log.Println("IP: ", ipv4)
-	err = syscall.Bind(sFd, &syscall.SockaddrInet4{
-		Port: cnfg.Port,
-		Addr: [4]byte{ipv4[0], ipv4[1], ipv4[2], ipv4[3]},
-	})
+	err = cnfg.BindAndListen()
+	defer closeServerFd(cnfg.ServerFd)
 
 	if err != nil {
-		PanicOnErr("bind failed", err)
+		common.PanicOnErr("Error", err)
 	}
-	err = syscall.Listen(sFd, cnfg.MaxEvents)
-	if err != nil {
-		PanicOnErr("listen failed", err)
-	}
-	log.Println("Server listning on host: ", cnfg.Host, "and port: ", cnfg.Port)
-
 	//Add server fd to intrest list
-	err = mp.Add(sFd)
+	err = mp.Add(cnfg.ServerFd)
 	if err != nil {
-		PanicOnErr("failed to add server fd in multiplexer", err)
+		common.PanicOnErr("failed to add server fd in multiplexer", err)
 	}
 
 	for {
@@ -92,8 +59,8 @@ func CreateAndHandelConnection(cnfg *config.Config) {
 		}
 		for _, ev := range readyEvents {
 			//TODO wrap this into function
-			if ev.Fd == sFd {
-				clientFileDescriptor, _, err := syscall.Accept(sFd)
+			if ev.Fd == cnfg.ServerFd {
+				clientFileDescriptor, _, err := syscall.Accept(cnfg.ServerFd)
 				if err != nil {
 					fmt.Println("Error while accepting the connection: ", err)
 					continue
@@ -145,5 +112,12 @@ func CreateAndHandelConnection(cnfg *config.Config) {
 			}
 		}
 
+	}
+}
+
+func closeServerFd(sFd int) {
+	serverCloseError := syscall.Close(sFd)
+	if serverCloseError != nil {
+		fmt.Println("Error closing server: ", serverCloseError)
 	}
 }

@@ -9,21 +9,21 @@ import (
 	"syscall"
 )
 
-type Config struct {
+type Server struct {
 	Host      string
 	Port      int
 	MaxEvents int
 	ServerFd  int
 }
 
-func InitializeConfig() Config {
-	config := Config{}
+func InitializeConfig() Server {
+	server := Server{}
 
-	config.Host = os.Getenv("HOST")
+	server.Host = os.Getenv("HOST")
 	portStr := os.Getenv("PORT")
 
-	if config.Host == "" {
-		config.Host = "localhost"
+	if server.Host == "" {
+		server.Host = "localhost"
 	}
 
 	if portStr == "" {
@@ -33,16 +33,16 @@ func InitializeConfig() Config {
 	if err != nil {
 		log.Fatal("Error while initializeing port")
 	}
-	config.Port = intPort
+	server.Port = intPort
 
-	if config.MaxEvents == 0 {
-		config.MaxEvents = 1000
+	if server.MaxEvents == 0 {
+		server.MaxEvents = 1000
 	}
 
-	return config
+	return server
 }
 
-func (cnfg *Config) BindAndListen() error {
+func (server *Server) BindAndListen() error {
 	sFd, sErr := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
 	//If creating is failed no point on closing
 	if sErr != nil {
@@ -66,7 +66,7 @@ func (cnfg *Config) BindAndListen() error {
 		return fmt.Errorf("failed to set non-blocking on listning file descriptor", err)
 	}
 
-	ips, err := net.LookupIP(cnfg.Host)
+	ips, err := net.LookupIP(server.Host)
 	if err != nil {
 		return fmt.Errorf("DNS lookup failed: %w", err)
 	}
@@ -80,24 +80,31 @@ func (cnfg *Config) BindAndListen() error {
 	}
 
 	if ipv4 == nil {
-		return fmt.Errorf("no IPv4 found for host: %s", cnfg.Host)
+		return fmt.Errorf("no IPv4 found for host: %s", server.Host)
 	}
 
 	err = syscall.Bind(sFd, &syscall.SockaddrInet4{
-		Port: cnfg.Port,
+		Port: server.Port,
 		Addr: [4]byte{ipv4[0], ipv4[1], ipv4[2], ipv4[3]},
 	})
 
 	if err != nil {
 		return fmt.Errorf("bind failed: %w", err)
 	}
-	err = syscall.Listen(sFd, cnfg.MaxEvents)
+	err = syscall.Listen(sFd, server.MaxEvents)
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
 	}
-	log.Println("Server listning on host: ", cnfg.Host, "and port: ", cnfg.Port)
+	log.Println("Server listning on host: ", server.Host, "and port: ", server.Port)
 
-	cnfg.ServerFd = sFd
+	server.ServerFd = sFd
 	return nil
 
+}
+
+func (s *Server) CloseServerFd() error {
+	if err := syscall.Close(s.ServerFd); err != nil {
+		return fmt.Errorf("failed to close server fd: %w", err)
+	}
+	return nil
 }

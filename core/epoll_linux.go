@@ -31,7 +31,7 @@ func (mp *EpollEventMultiPlexing) Remove(fd int) error {
 }
 
 func (mp *EpollEventMultiPlexing) Wait() ([]Event, error) {
-	n, err := syscall.EpollWait(mp.epollFd, mp.events[:], -1)
+	n, err := syscall.EpollWait(mp.epollFd, mp.events[:], 800)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,8 @@
 package core
 
-import "syscall"
+import (
+	"syscall"
+)
 
 type EpollEventMultiPlexing struct {
 	epollFd int
@@ -31,8 +33,11 @@ func (mp *EpollEventMultiPlexing) Remove(fd int) error {
 }
 
 func (mp *EpollEventMultiPlexing) Wait() ([]Event, error) {
-	n, err := syscall.EpollWait(mp.epollFd, mp.events[:], 800)
+	n, err := syscall.EpollWait(mp.epollFd, mp.events[:], 1)
 	if err != nil {
+		if err == syscall.EINTR { //Source https://stackoverflow.com/questions/19186711/after-call-epoll-wait-linux-system-is-returning-interrupted-system-call-error
+			return nil, nil
+		}
 		return nil, err
 	}
 	var out []Event

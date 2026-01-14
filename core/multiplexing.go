@@ -64,7 +64,7 @@ func CreateAndHandelConnection(server *config.Server) {
 						fmt.Println("Error while accepting the connection: ", err)
 						continue
 					}
-					syscall.SetNonblock(clientFileDescriptor, true)
+					syscall.SetNonblock(clientFileDescriptor, true) //Reference https://www.kegel.com/dkftpbench/nonblocking.html
 					err = mp.Add(clientFileDescriptor)
 					if err != nil {
 						fmt.Println("Error while adding client fd to multiplexer", err)
@@ -83,8 +83,9 @@ func CreateAndHandelConnection(server *config.Server) {
 						log.Println("Client Disconnected")
 						continue
 					}
-					args, read, err := protocol.Decode(buf)
-					if err != nil || read == 0 {
+					tokens, err := tokenDecoder(buf[:n])
+					fmt.Println("tokens: ", tokens)
+					if err != nil {
 						removeErr := mp.Remove(ev.Fd)
 						syscall.Close(ev.Fd)
 						if removeErr != nil {
@@ -93,21 +94,11 @@ func CreateAndHandelConnection(server *config.Server) {
 						log.Println("Client Disconnected")
 						continue
 					}
-					fmt.Println(args)
+					cmd := GetCommand(tokens)
+					evaluateCmdAndResponde(&cmd, ev.Fd)
 
-					argvRaw, ok := args.([]interface{})
-					if !ok || len(argvRaw) == 0 {
-						continue
-					}
+					syscall.Write(ev.Fd, []byte("+PONG\r\n"))
 
-					cmd, ok := argvRaw[0].(string)
-					if !ok {
-						continue
-					}
-
-					if cmd == "PING" || cmd == "ping" {
-						syscall.Write(ev.Fd, []byte("+PONG\r\n"))
-					}
 				}
 			}
 		}
@@ -128,4 +119,43 @@ func shutDown(mp EventMultiPlexer, server *config.Server) error {
 	}
 	fmt.Println("Bye ^_^")
 	return nil
+}
+
+func tokenDecoder(buff []byte) ([]string, error) {
+	args, _, err := protocol.Decode(buff)
+	if err != nil {
+		return nil, err
+	}
+
+	argvRaw, ok := args.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expected array got %t", args)
+	}
+	tokens := make([]string, len(argvRaw))
+	for i := range argvRaw {
+		token, ok := argvRaw[i].(string)
+		if !ok {
+			return nil, fmt.Errorf("not a string %t", argvRaw[i])
+		}
+		tokens[i] = token
+	}
+	return tokens, nil
+}
+
+func evaluateCmdAndResponde(cmd *Command, fd int) {
+	switch cmd.Command {
+	case "ping":
+		syscall.Write(fd, []byte("+PONG\r\n"))
+
+	case "info":
+		info := "# Server\r\ncustome-cache:0.1\r\n"
+		resp := fmt.Sprintf("$%d\r\n%s\r\n", len(info), info)
+		syscall.Write(fd, []byte(resp))
+
+	case "client":
+		syscall.Write(fd, []byte("+OK\r\n"))
+
+	default:
+		syscall.Write(fd, []byte("-ERR unknown command\r\n"))
+	}
 }

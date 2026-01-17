@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/rautNishan/custome-cache/command"
 	"github.com/rautNishan/custome-cache/common"
 	"github.com/rautNishan/custome-cache/config"
 	"github.com/rautNishan/custome-cache/protocol"
@@ -70,8 +71,10 @@ func CreateAndHandelConnection(server *config.Server) {
 						fmt.Println("Error while adding client fd to multiplexer", err)
 						continue
 					}
+					fmt.Println("Connected")
 				} else {
 					buf := make([]byte, 1024)
+
 					n, err := syscall.Read(int(ev.Fd), buf)
 					// In this n==0 indicates a graceful shutdown (EFO)
 					if n == 0 || err != nil {
@@ -84,7 +87,6 @@ func CreateAndHandelConnection(server *config.Server) {
 						continue
 					}
 					tokens, err := tokenDecoder(buf[:n])
-					fmt.Println("tokens: ", tokens)
 					if err != nil {
 						removeErr := mp.Remove(ev.Fd)
 						syscall.Close(ev.Fd)
@@ -94,11 +96,8 @@ func CreateAndHandelConnection(server *config.Server) {
 						log.Println("Client Disconnected")
 						continue
 					}
-					cmd := GetCommand(tokens)
-					evaluateCmdAndResponde(&cmd, ev.Fd)
-
-					syscall.Write(ev.Fd, []byte("+PONG\r\n"))
-
+					cmd := command.GetCommand(tokens)
+					cmd.EvaluateCmdAndResponde(ev.Fd)
 				}
 			}
 		}
@@ -140,22 +139,4 @@ func tokenDecoder(buff []byte) ([]string, error) {
 		tokens[i] = token
 	}
 	return tokens, nil
-}
-
-func evaluateCmdAndResponde(cmd *Command, fd int) {
-	switch cmd.Command {
-	case "ping":
-		syscall.Write(fd, []byte("+PONG\r\n"))
-
-	case "info":
-		info := "# Server\r\ncustome-cache:0.1\r\n"
-		resp := fmt.Sprintf("$%d\r\n%s\r\n", len(info), info)
-		syscall.Write(fd, []byte(resp))
-
-	case "client":
-		syscall.Write(fd, []byte("+OK\r\n"))
-
-	default:
-		syscall.Write(fd, []byte("-ERR unknown command\r\n"))
-	}
 }

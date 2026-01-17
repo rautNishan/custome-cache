@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strconv"
 )
 
@@ -110,4 +111,48 @@ func readArray(b []byte) ([]interface{}, int, error) {
 		offset += read
 	}
 	return arr, offset, nil
+}
+
+func Encode(v interface{}, simpleString bool) []byte {
+	switch val := v.(type) {
+	case string:
+		if simpleString {
+			return encodeSimpleString(val)
+		}
+		return encodeBulkString(val)
+	case int:
+		return []byte(fmt.Sprintf(":%d/r/n", val))
+
+	case error:
+		return []byte(fmt.Sprintf("-%s\r\n", val))
+	}
+	return nil
+}
+
+func encodeSimpleString(val string) []byte {
+	buff := make([]byte, 0, len(val)+3)
+	buff = append(buff, '+')
+	buff = append(buff, val...)
+	buff = append(buff, '\r', '\n')
+	return buff
+}
+
+func encodeBulkString(val string) []byte {
+	if val == "" {
+		return []byte("$0\r\n\r\n")
+	}
+	digits := 1
+	valLen := len(val)
+	for i := valLen; i >= 10; {
+		digits++
+		i = i / 10
+	}
+	buf := make([]byte, 0, 1+digits+2+len(val)+2)
+	buf = append(buf, '$')
+	buf = strconv.AppendInt(buf, int64(len(val)), 10)
+	buf = append(buf, '\r', '\n')
+	buf = append(buf, val...)
+	buf = append(buf, '\r', '\n')
+
+	return buf
 }

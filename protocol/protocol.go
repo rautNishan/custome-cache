@@ -121,12 +121,22 @@ func Encode(v interface{}, simpleString bool) []byte {
 		}
 		return encodeBulkString(val)
 	case int:
-		return []byte(fmt.Sprintf(":%d/r/n", val))
+		return encodeInt(val)
 
 	case error:
 		return []byte(fmt.Sprintf("-%s\r\n", val))
 	}
-	return nil
+	return encodeNil()
+}
+
+func encodeInt(val int) []byte {
+	//First find how many bytes do i need
+	b := getIntLen(val)
+	buff := make([]byte, 0, b)
+	buff = append(buff, ':')
+	buff = strconv.AppendInt(buff, int64(val), 10)
+	buff = append(buff, '\r', '\n')
+	return buff
 }
 
 func encodeSimpleString(val string) []byte {
@@ -143,10 +153,7 @@ func encodeBulkString(val string) []byte {
 	}
 	digits := 1
 	valLen := len(val)
-	for i := valLen; i >= 10; {
-		digits++
-		i = i / 10
-	}
+	digits += getIntLen(valLen)
 	buf := make([]byte, 0, 1+digits+2+len(val)+2)
 	buf = append(buf, '$')
 	buf = strconv.AppendInt(buf, int64(len(val)), 10)
@@ -155,4 +162,32 @@ func encodeBulkString(val string) []byte {
 	buf = append(buf, '\r', '\n')
 
 	return buf
+}
+
+func encodeNil() []byte {
+	buff := make([]byte, 0, 3)
+	buff = append(buff, '_')
+	buff = append(buff, '\r', '\n')
+	return buff
+}
+
+func getIntLen(val int) int {
+	totalLen := 0
+	if val == 0 {
+		return 1
+	}
+
+	if val < 0 {
+		totalLen += 1 //for - sign
+		val = -val    //make it positive
+	}
+
+	for {
+		if val == 0 {
+			break
+		}
+		val = val / 10
+		totalLen += 1
+	}
+	return totalLen
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rautNishan/custome-cache/protocol"
 )
@@ -33,6 +34,7 @@ func (cmd *Command) EvaluateCmdAndResponde(fd int) {
 	case "SET":
 		cmd.evalSet(writer)
 	case "GET":
+		cmd.evalGet(writer)
 	case "TTL":
 	default:
 		cmd.evalError("unsupported RESP encode type", writer)
@@ -64,7 +66,6 @@ func (cmd *Command) evalSet(w Writer) {
 	}
 	var ttlMs int64 = -1 //there was never ttl
 	key, val := cmd.Args[0], cmd.Args[1]
-	fmt.Println("This is key", key, "and this is val: ", val)
 
 	//right now only supported ttl
 	for i := 2; i < len(cmd.Args); i++ {
@@ -90,6 +91,34 @@ func (cmd *Command) evalSet(w Writer) {
 	}
 	Put(key, NewEntry(val, ttlMs))
 	cmd.evalOK(w)
+}
+
+func (cmd *Command) evalGet(w Writer) {
+	fmt.Println("Inside get")
+	if len(cmd.Args) != 1 {
+		cmd.evalError("should be exact one arguments", w)
+		return
+	}
+	data := Get(cmd.Args[0])
+	fmt.Println("This is data: ", data)
+	//If the key did not exists
+	if data == nil {
+		p := protocol.Encode(nil, false)
+		w.Write(p)
+		return
+	}
+
+	//check if user has put expiration or not
+	fmt.Println("This is data expired at: ", data.expiresAt)
+	if data.expiresAt != -1 && data.expiresAt <= time.Now().UnixMilli() {
+		data.expiresAt = -2
+		p := protocol.Encode(nil, false)
+		w.Write(p)
+		return
+	}
+
+	p := protocol.Encode(data.value, false)
+	w.Write(p)
 }
 
 func (cmd *Command) evalError(msg string, w Writer) {

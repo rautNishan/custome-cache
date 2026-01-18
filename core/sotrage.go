@@ -30,6 +30,10 @@ func NewEntry(value interface{}, ttlMs int64) *Entry {
 }
 
 func Put(k string, val *Entry) {
+	fmt.Println("puttng new entry: ", val)
 	storage[k] = val
-	fmt.Println(storage[k])
+}
+
+func Get(k string) *Entry {
+	return storage[k]
 }

@@ -1,33 +1,16 @@
-package command
+package core
 
 import (
 	"errors"
 	"fmt"
 	"strings"
-	"syscall"
 
 	"github.com/rautNishan/custome-cache/protocol"
 )
 
-type Writer interface {
-	Write(data []byte) error
-}
-
-type SyscallWriter struct {
-	fd int
-}
-
 type Command struct {
 	Command string
 	Args    []string
-}
-
-func NewSysCallWriter(fd int) *SyscallWriter {
-	return &SyscallWriter{fd: fd}
-}
-func (w *SyscallWriter) Write(data []byte) error {
-	_, err := syscall.Write(w.fd, data)
-	return err
 }
 
 func GetCommand(tokens []string) Command {
@@ -38,13 +21,14 @@ func GetCommand(tokens []string) Command {
 }
 
 func (cmd *Command) EvaluateCmdAndResponde(fd int) {
-	fmt.Println(cmd.Command)
 	writer := NewSysCallWriter(fd)
 	switch cmd.Command {
+	case "COMMAND":
+		cmd.evalOK(writer)
 	case "PING":
 		cmd.evalPing(writer)
 	case "INFO":
-		cmd.evalInfo(writer)
+		cmd.evalOK(writer)
 	default:
 		cmd.evalError(writer)
 	}
@@ -71,7 +55,7 @@ func (cmd *Command) evalError(w Writer) {
 	w.Write(p)
 }
 
-func (cmd *Command) evalInfo(w Writer) {
+func (cmd *Command) evalOK(w Writer) {
 	p := protocol.Encode("OK", true)
 	w.Write(p)
 }

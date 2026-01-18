@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/rautNishan/custome-cache/command"
 	"github.com/rautNishan/custome-cache/common"
 	"github.com/rautNishan/custome-cache/config"
 	"github.com/rautNishan/custome-cache/protocol"
@@ -73,8 +72,9 @@ func CreateAndHandelConnection(server *config.Server) {
 							fmt.Printf("Error removing fd from epoll: %v\n", err)
 						}
 						log.Println("Client Disconnected")
+						continue
 					}
-					cmd := command.GetCommand(tokens)
+					cmd := GetCommand(tokens)
 					cmd.EvaluateCmdAndResponde(ev.Fd)
 				}
 			}
@@ -132,13 +132,12 @@ func acceptConnAndAddInIntrestedList(s *config.Server, mp EventMultiPlexer) erro
 }
 
 func readAndGetTokens(fd int) ([]string, error) {
-	buf := make([]byte, 0, 1024)
-
-	n, err := syscall.Read(int(fd), buf)
+	buf := make([]byte, 1024) //Do not make length of 0
+	reader := NewSyscallReader(fd)
+	n, err := reader.Read(buf)
 	// In this n==0 indicates a graceful shutdown (EFO)
 	if n == 0 || err != nil {
 		return nil, fmt.Errorf("Error while reading: %v", err)
-
 	}
 	tokens, err := tokenDecoder(buf[:n])
 	if err != nil {

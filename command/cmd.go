@@ -9,9 +9,25 @@ import (
 	"github.com/rautNishan/custome-cache/protocol"
 )
 
+type Writer interface {
+	Write(data []byte) error
+}
+
+type SyscallWriter struct {
+	fd int
+}
+
 type Command struct {
 	Command string
 	Args    []string
+}
+
+func NewSysCallWriter(fd int) *SyscallWriter {
+	return &SyscallWriter{fd: fd}
+}
+func (w *SyscallWriter) Write(data []byte) error {
+	_, err := syscall.Write(w.fd, data)
+	return err
 }
 
 func GetCommand(tokens []string) Command {
@@ -23,37 +39,39 @@ func GetCommand(tokens []string) Command {
 
 func (cmd *Command) EvaluateCmdAndResponde(fd int) {
 	fmt.Println(cmd.Command)
+	writer := NewSysCallWriter(fd)
 	switch cmd.Command {
 	case "PING":
-		cmd.evalPing(fd)
+		cmd.evalPing(writer)
 	case "INFO":
-		cmd.evalInfo(fd)
+		cmd.evalInfo(writer)
 	default:
-		cmd.evalError(fd)
+		cmd.evalError(writer)
 	}
 }
 
-func (cmd *Command) evalPing(fd int) {
+func (cmd *Command) evalPing(w Writer) {
 	if len(cmd.Args) > 1 {
 		err := errors.New("ERR unknown command")
 		p := protocol.Encode(err, false)
-		syscall.Write(fd, p)
+		w.Write(p)
 	} else if len(cmd.Args) == 1 {
 		fmt.Println("Yes one", cmd.Args[0])
 		p := protocol.Encode(cmd.Args[0], true)
-		syscall.Write(fd, p)
+		w.Write(p)
+
 	} else {
 		p := protocol.Encode("PONG", true)
-		syscall.Write(fd, p)
+		w.Write(p)
 	}
 }
-func (cmd *Command) evalError(fd int) {
+func (cmd *Command) evalError(w Writer) {
 	err := errors.New("unsupported RESP encode type")
 	p := protocol.Encode(err, false)
-	syscall.Write(fd, p)
+	w.Write(p)
 }
 
-func (cmd *Command) evalInfo(fd int) {
+func (cmd *Command) evalInfo(w Writer) {
 	p := protocol.Encode("OK", true)
-	syscall.Write(fd, p)
+	w.Write(p)
 }

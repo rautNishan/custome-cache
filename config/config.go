@@ -108,3 +108,12 @@ func (s *Server) CloseServerFd() error {
 	}
 	return nil
 }
+
+func (s *Server) AcceptConnection() (int, syscall.Sockaddr, error) {
+	clientFd, sa, err := syscall.Accept(s.ServerFd)
+	if err != nil {
+		return -1, nil, err
+	}
+	syscall.SetNonblock(clientFd, true)
+	return clientFd, sa, nil
+}

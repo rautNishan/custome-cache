@@ -52,41 +52,20 @@ func CreateAndHandelConnection(server *config.Server) {
 			return
 		default:
 			readyEvents, err := mp.Wait()
-
 			if err != nil {
 				fmt.Printf("Error in epoll wait: %v\n", err)
 				continue
 			}
 			for _, ev := range readyEvents {
-				//TODO wrap this into function
 				if ev.Fd == server.ServerFd {
-					clientFileDescriptor, _, err := syscall.Accept(server.ServerFd)
+					err := acceptConnAndAddInIntrestedList(server, mp)
 					if err != nil {
-						fmt.Println("Error while accepting the connection: ", err)
-						continue
-					}
-					syscall.SetNonblock(clientFileDescriptor, true) //Reference https://www.kegel.com/dkftpbench/nonblocking.html
-					err = mp.Add(clientFileDescriptor)
-					if err != nil {
-						fmt.Println("Error while adding client fd to multiplexer", err)
+						fmt.Println(err)
 						continue
 					}
 					fmt.Println("Connected")
 				} else {
-					buf := make([]byte, 1024)
-
-					n, err := syscall.Read(int(ev.Fd), buf)
-					// In this n==0 indicates a graceful shutdown (EFO)
-					if n == 0 || err != nil {
-						removeErr := mp.Remove(ev.Fd)
-						syscall.Close(ev.Fd)
-						if removeErr != nil {
-							fmt.Printf("Error removing fd from epoll: %v\n", err)
-						}
-						log.Println("Client Disconnected")
-						continue
-					}
-					tokens, err := tokenDecoder(buf[:n])
+					tokens, err := readAndGetTokens(ev.Fd)
 					if err != nil {
 						removeErr := mp.Remove(ev.Fd)
 						syscall.Close(ev.Fd)
@@ -94,7 +73,6 @@ func CreateAndHandelConnection(server *config.Server) {
 							fmt.Printf("Error removing fd from epoll: %v\n", err)
 						}
 						log.Println("Client Disconnected")
-						continue
 					}
 					cmd := command.GetCommand(tokens)
 					cmd.EvaluateCmdAndResponde(ev.Fd)
@@ -137,6 +115,34 @@ func tokenDecoder(buff []byte) ([]string, error) {
 			return nil, fmt.Errorf("not a string %t", argvRaw[i])
 		}
 		tokens[i] = token
+	}
+	return tokens, nil
+}
+
+func acceptConnAndAddInIntrestedList(s *config.Server, mp EventMultiPlexer) error {
+	clientFileDescriptor, _, err := s.AcceptConnection()
+	if err != nil {
+		return fmt.Errorf("Error while accepting client: %v", err)
+	}
+	err = mp.Add(clientFileDescriptor)
+	if err != nil {
+		return fmt.Errorf("Error while adding client fd to multiplexer: %v", err)
+	}
+	return nil
+}
+
+func readAndGetTokens(fd int) ([]string, error) {
+	buf := make([]byte, 0, 1024)
+
+	n, err := syscall.Read(int(fd), buf)
+	// In this n==0 indicates a graceful shutdown (EFO)
+	if n == 0 || err != nil {
+		return nil, fmt.Errorf("Error while reading: %v", err)
+
+	}
+	tokens, err := tokenDecoder(buf[:n])
+	if err != nil {
+		return nil, fmt.Errorf("Error while extracting tokens: %v", err)
 	}
 	return tokens, nil
 }

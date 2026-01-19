@@ -41,7 +41,10 @@ func (mp *KqueueMultiPlexing) Remove(fd int) error {
 
 func (mp *KqueueMultiPlexing) Wait() ([]Event, error) {
 	events := make([]syscall.Kevent_t, 1024)
-	n, err := syscall.Kevent(mp.kq, nil, events, nil)
+	timeOut := &syscall.Timespec{
+		Nsec: 1,
+	}
+	n, err := syscall.Kevent(mp.kq, nil, events, timeOut)
 	if err != nil {
 		return nil, err
 	}

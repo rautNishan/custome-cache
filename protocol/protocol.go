@@ -122,7 +122,8 @@ func Encode(v interface{}, simpleString bool) []byte {
 		return encodeBulkString(val)
 	case int:
 		return encodeInt(val)
-
+	case int64:
+		return encodeInt64(val)
 	case error:
 		return []byte(fmt.Sprintf("-%s\r\n", val))
 	}
@@ -132,6 +133,16 @@ func Encode(v interface{}, simpleString bool) []byte {
 func encodeInt(val int) []byte {
 	//First find how many bytes do i need
 	b := getIntLen(val)
+	buff := make([]byte, 0, b)
+	buff = append(buff, ':')
+	buff = strconv.AppendInt(buff, int64(val), 10)
+	buff = append(buff, '\r', '\n')
+	return buff
+}
+
+func encodeInt64(val int64) []byte {
+	//First find how many bytes do i need
+	b := getIntLen64(val)
 	buff := make([]byte, 0, b)
 	buff = append(buff, ':')
 	buff = strconv.AppendInt(buff, int64(val), 10)
@@ -172,6 +183,27 @@ func encodeNil() []byte {
 }
 
 func getIntLen(val int) int {
+	totalLen := 0
+	if val == 0 {
+		return 1
+	}
+
+	if val < 0 {
+		totalLen += 1 //for - sign
+		val = -val    //make it positive
+	}
+
+	for {
+		if val == 0 {
+			break
+		}
+		val = val / 10
+		totalLen += 1
+	}
+	return totalLen
+}
+
+func getIntLen64(val int64) int {
 	totalLen := 0
 	if val == 0 {
 		return 1

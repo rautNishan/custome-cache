@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -30,10 +29,14 @@ func NewEntry(value interface{}, ttlMs int64) *Entry {
 }
 
 func Put(k string, val *Entry) {
-	fmt.Println("puttng new entry: ", val)
 	storage[k] = val
 }
 
 func Get(k string) *Entry {
+	return storage[k]
+}
+
+func Delete(k string) *Entry {
+	delete(storage, k)
 	return storage[k]
 }

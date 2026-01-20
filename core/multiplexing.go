@@ -52,7 +52,6 @@ func CreateAndHandelConnection(server *config.Server) {
 		default:
 			readyEvents, err := mp.Wait()
 			if err != nil {
-				fmt.Printf("Error in epoll wait: %v\n", err)
 				continue
 			}
 			for _, ev := range readyEvents {

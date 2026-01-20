@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -168,26 +169,27 @@ func getErrorMessage(msg string) error {
 }
 
 func (cmd *Command) evalDelete(w Writer) {
-	if len(cmd.Args) != 1 {
+	if len(cmd.Args) == 0 {
 		cmd.evalError("should be exact one arguments", w)
 		return
 	}
-	key := cmd.Args[0]
-	//First check if value exist or not
-	item := Get(key)
+	fmt.Println("THis is cmd: ", cmd.Args)
+	nDeleted := 0
+	for i := 0; i < len(cmd.Args); i++ {
+		key := cmd.Args[i]
+		item := Get(key)
 
-	if item == nil { //No item to delete
-		p := protocol.Encode(nil, false)
-		w.Write(p)
-		return
+		if item == nil {
+			continue
+		}
+		empty := Delete(key)
+		if empty != nil { //Deleted unsuccessful
+			continue
+		}
+		nDeleted++
 	}
-
-	empty := Delete(key)
-	if empty != nil {
-		cmd.evalError("Something went wrong deleting the key", w)
-		return
-	}
-	cmd.evalOK(w)
+	p := protocol.Encode(nDeleted, false)
+	w.Write(p)
 }
 
 func (cmd *Command) evalTTL(w Writer) {

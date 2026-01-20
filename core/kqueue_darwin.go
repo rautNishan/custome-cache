@@ -45,7 +45,11 @@ func (mp *KqueueMultiPlexing) Wait() ([]Event, error) {
 		Nsec: 1,
 	}
 	n, err := syscall.Kevent(mp.kq, nil, events, timeOut)
+
 	if err != nil {
+		if err == syscall.EINTR { //Source https://stackoverflow.com/questions/19186711/after-call-epoll-wait-linux-system-is-returning-interrupted-system-call-error
+			return nil, nil
+		}
 		return nil, err
 	}
 

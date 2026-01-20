@@ -1,4 +1,6 @@
-
+---
+![Alt text](image.png)
+---
 # Custom Cache (Redis-like)
 A lightweight **Single Threaded Redis-inspired in-memory key-value store** written in Go.
 
@@ -176,7 +178,5 @@ This implementation uses the **RESP (REdis Serialization Protocol)**, making it 
 Contributions are welcome! Please feel free to submit a Pull Request.
 ---
 ## Author
-[Nishan Raut]
+Nishan Raut
 
----
-![Alt text](image.png)

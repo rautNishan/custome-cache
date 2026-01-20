@@ -2,7 +2,6 @@ package core
 
 import (
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -10,78 +9,104 @@ import (
 	"github.com/rautNishan/custome-cache/protocol"
 )
 
+type CommandType string
+
+const (
+	CmdCommand CommandType = "COMMAND"
+	CmdPing    CommandType = "PING"
+	CmdInfo    CommandType = "INFO"
+	CmdSet     CommandType = "SET"
+	CmdGet     CommandType = "GET"
+	CmdDel     CommandType = "DEL"
+	CmdTTL     CommandType = "TTL"
+)
+
+type CommandExecutor interface {
+	Execute(args []string, w Writer)
+}
+
+var commandRegistry = make(map[CommandType]CommandExecutor)
+
+func RegisterCommand(cmdType CommandType, executro CommandExecutor) {
+	commandRegistry[cmdType] = executro
+}
+
 type Command struct {
-	Command string
-	Args    []string
+	Command  CommandType
+	Args     []string
+	executor CommandExecutor
 }
 
 func GetCommand(tokens []string) Command {
+	cmdType := CommandType(strings.ToUpper(tokens[0]))
 	return Command{
-		Command: strings.ToUpper(tokens[0]),
-		Args:    tokens[1:],
+		Command:  cmdType,
+		Args:     tokens[1:],
+		executor: commandRegistry[cmdType],
 	}
+}
+
+func writeError(msg string, w Writer) {
+	err := getErrorMessage(msg)
+	p := protocol.Encode(err, false)
+	w.Write(p)
 }
 
 func (cmd *Command) EvaluateCmdAndResponde(fd int) {
 	writer := NewSysCallWriter(fd)
-	switch cmd.Command {
-	case "COMMAND":
-		cmd.evalOK(writer)
-	case "PING":
-		cmd.evalPing(writer)
-	case "INFO":
-		cmd.evalOK(writer)
-	case "SET":
-		cmd.evalSet(writer)
-	case "GET":
-		cmd.evalGet(writer)
-	case "DEL":
-		cmd.evalDelete(writer)
-	case "TTL":
-		cmd.evalTTL(writer)
-	default:
-		cmd.evalError("unsupported RESP encode type", writer)
-	}
+	cmd.executor.Execute(cmd.Args, writer)
 }
 
-func (cmd *Command) evalPing(w Writer) {
-	if len(cmd.Args) > 1 {
-		cmd.evalError("incorrect arguments in ping", w)
-	} else if len(cmd.Args) == 1 {
-		p := protocol.Encode(cmd.Args[0], true)
-		w.Write(p)
+// Eval Ping
+type EvalPingCommand struct {
+}
 
+func (c *EvalPingCommand) Execute(args []string, w Writer) {
+	if len(args) > 1 {
+		writeError("incorrect arguments in ping", w)
+	} else if len(args) == 1 {
+		p := protocol.Encode(args[0], true)
+		w.Write(p)
 	} else {
 		p := protocol.Encode("PONG", true)
 		w.Write(p)
 	}
 }
 
-func (cmd *Command) evalOK(w Writer) {
+// Eval Ok
+type EvalOkCommand struct {
+}
+
+func (c *EvalOkCommand) Execute(args []string, w Writer) {
 	p := protocol.Encode("OK", true)
 	w.Write(p)
 }
 
-func (cmd *Command) evalSet(w Writer) {
-	if len(cmd.Args) <= 1 {
-		cmd.evalError("bad arguments in set", w)
+// Eval Set
+
+type EvalSetCommand struct {
+}
+
+func (c *EvalSetCommand) Execute(args []string, w Writer) {
+	if len(args) <= 1 {
+		writeError("bad arguments in set", w)
 		return
 	}
 	var ttlMs int64 = -1 //there was never ttl
-	key, val := cmd.Args[0], cmd.Args[1]
+	key, val := args[0], args[1]
 	//right now only supported ttl
-	for i := 2; i < len(cmd.Args); i++ {
-		opt := cmd.Args[i]
+	for i := 2; i < len(args); i++ {
+		opt := args[i]
 		switch opt {
 		//Only set the key if it does not already exist.
 		case "NX", "nx":
 			i++
-			if i != len(cmd.Args) {
-				cmd.evalError("bad arguments", w)
+			if i != len(args) {
+				writeError("bad arguments", w)
 				return
 			}
 			//First check if key exists or not
-			exists := Get(key)
+			exists := storage.Get(key)
 			if exists != nil && exists.expiresAt == -1 {
 				p := protocol.Encode(nil, false)
 				w.Write(p)
@@ -91,12 +116,12 @@ func (cmd *Command) evalSet(w Writer) {
 		//Only set the key if it already exists.
 		case "XX", "xx":
 			i++
-			if i != len(cmd.Args) {
-				cmd.evalError("bad arguments", w)
+			if i != len(args) {
+				writeError("bad arguments", w)
 				return
 			}
 			//First check if key exists or not
-			exists := Get(key)
+			exists := storage.Get(key)
 			if exists == nil {
 				p := protocol.Encode(nil, false)
 				w.Write(p)
@@ -112,33 +137,37 @@ func (cmd *Command) evalSet(w Writer) {
 		case "EX", "ex":
 			i++
 			//set k v ttl (but no value in ttl)
-			if i == len(cmd.Args) {
-				cmd.evalError("bad arguments", w)
+			if i == len(args) {
+				writeError("bad arguments", w)
 				return
 			}
-			ttlSec, err := strconv.ParseInt(cmd.Args[i], 10, 64)
+			ttlSec, err := strconv.ParseInt(args[i], 10, 64)
 			if err != nil {
-				cmd.evalError("should be an integer", w)
+				writeError("should be an integer", w)
 			}
 			ttlMs = ttlSec * 1000
 
 		default:
-			cmd.evalError("bad args", w)
+			writeError("bad args", w)
 			return
 		}
 
 	}
-	Put(key, NewEntry(val, ttlMs))
-	cmd.evalOK(w)
+	storage.Put(key, NewEntry(val, ttlMs))
+	p := protocol.Encode("OK", true)
+	w.Write(p)
 }
 
-func (cmd *Command) evalGet(w Writer) {
-	if len(cmd.Args) != 1 {
-		cmd.evalError("should be exact one arguments", w)
+type EvalGetCommand struct {
+}
+
+func (c *EvalGetCommand) Execute(args []string, w Writer) {
+	if len(args) != 1 {
+		writeError("should be exact one arguments", w)
 		return
 	}
-	key := cmd.Args[0]
-	data := Get(key)
+	key := args[0]
+	data := storage.Get(key)
 	//If the key did not exists
 	if data == nil {
 		p := protocol.Encode(nil, false)
@@ -158,31 +187,23 @@ func (cmd *Command) evalGet(w Writer) {
 	w.Write(p)
 }
 
-func (cmd *Command) evalError(msg string, w Writer) {
-	err := getErrorMessage(msg)
-	p := protocol.Encode(err, false)
-	w.Write(p)
+type EvalDelCommand struct {
 }
 
-func getErrorMessage(msg string) error {
-	return errors.New(msg)
-}
-
-func (cmd *Command) evalDelete(w Writer) {
-	if len(cmd.Args) == 0 {
-		cmd.evalError("should be exact one arguments", w)
+func (c *EvalDelCommand) Execute(args []string, w Writer) {
+	if len(args) == 0 {
+		writeError("should be exact one arguments", w)
 		return
 	}
-	fmt.Println("THis is cmd: ", cmd.Args)
 	nDeleted := 0
-	for i := 0; i < len(cmd.Args); i++ {
-		key := cmd.Args[i]
-		item := Get(key)
+	for i := 0; i < len(args); i++ {
+		key := args[i]
+		item := storage.Get(key)
 
 		if item == nil {
 			continue
 		}
-		empty := Delete(key)
+		empty := storage.Delete(key)
 		if empty != nil { //Deleted unsuccessful
 			continue
 		}
@@ -192,14 +213,17 @@ func (cmd *Command) evalDelete(w Writer) {
 	w.Write(p)
 }
 
-func (cmd *Command) evalTTL(w Writer) {
-	if len(cmd.Args) != 1 {
-		cmd.evalError("should be exact one arguments", w)
+type EvalTTLCommand struct {
+}
+
+func (c *EvalTTLCommand) Execute(args []string, w Writer) {
+	if len(args) != 1 {
+		writeError("should be exact one arguments", w)
 		return
 	}
-	key := cmd.Args[0]
+	key := args[0]
 	//First check if value exist or not
-	item := Get(key)
+	item := storage.Get(key)
 	if item == nil { //No item to gets its ttl
 		p := protocol.Encode(nil, false)
 		w.Write(p)
@@ -224,4 +248,25 @@ func (cmd *Command) evalTTL(w Writer) {
 
 	p := protocol.Encode(sec, false)
 	w.Write(p)
+}
+
+type OKCommand struct{}
+
+func (c *OKCommand) Execute(args []string, w Writer) {
+	p := protocol.Encode("OK", true)
+	w.Write(p)
+}
+
+func getErrorMessage(msg string) error {
+	return errors.New(msg)
+}
+
+func init() {
+	RegisterCommand(CmdCommand, &OKCommand{})
+	RegisterCommand(CmdPing, &EvalPingCommand{})
+	RegisterCommand(CmdInfo, &OKCommand{})
+	RegisterCommand(CmdSet, &EvalSetCommand{})
+	RegisterCommand(CmdGet, &EvalGetCommand{})
+	RegisterCommand(CmdDel, &EvalDelCommand{})
+	RegisterCommand(CmdTTL, &EvalTTLCommand{})
 }

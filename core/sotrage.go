@@ -4,15 +4,31 @@ import (
 	"time"
 )
 
-var storage map[string]*Entry
+type Cache interface {
+	Put(k string, value *Entry)
+	Get(k string) *Entry
+	Delete(k string) *Entry
+}
+
+var storage Cache
 
 type Entry struct {
 	value     interface{}
 	expiresAt int64 // milliseconds
 }
 
+type InMemoryStorage struct {
+	storage map[string]*Entry
+}
+
+func NewInMemoryCache() *InMemoryStorage {
+	return &InMemoryStorage{
+		storage: make(map[string]*Entry),
+	}
+}
+
 func init() {
-	storage = make(map[string]*Entry)
+	storage = NewInMemoryCache()
 }
 
 func NewEntry(value interface{}, ttlMs int64) *Entry {
@@ -28,15 +44,15 @@ func NewEntry(value interface{}, ttlMs int64) *Entry {
 	}
 }
 
-func Put(k string, val *Entry) {
-	storage[k] = val
+func (c *InMemoryStorage) Put(k string, val *Entry) {
+	c.storage[k] = val
 }
 
-func Get(k string) *Entry {
-	return storage[k]
+func (c *InMemoryStorage) Get(k string) *Entry {
+	return c.storage[k]
 }
 
-func Delete(k string) *Entry {
-	delete(storage, k)
-	return storage[k]
+func (c *InMemoryStorage) Delete(k string) *Entry {
+	delete(c.storage, k)
+	return c.storage[k]
 }

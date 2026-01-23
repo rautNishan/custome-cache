@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ const (
 	CmdGet     CommandType = "GET"
 	CmdDel     CommandType = "DEL"
 	CmdTTL     CommandType = "TTL"
+	CmdExpire  CommandType = "EXPIRE"
 )
 
 type CommandExecutor interface {
@@ -250,6 +252,36 @@ func (c *EvalTTLCommand) Execute(args []string, w Writer) {
 	w.Write(p)
 }
 
+type EvalExpireCommand struct{}
+
+func (c *EvalExpireCommand) Execute(args []string, w Writer) {
+	if len(args) != 2 {
+		writeError("bad arguments for EXPIRE command", w)
+		return
+	}
+
+	key := args[0]
+	sec, err := strconv.ParseInt(args[1], 10, 64)
+
+	if err != nil {
+		writeError("invalid int for expiration", w)
+		return
+	}
+	//First get key
+	item := storage.Get(key)
+
+	if item == nil {
+		p := protocol.Encode(0, false)
+		w.Write(p)
+		return
+	}
+	fmt.Println("Setting new expiration")
+	//Set new Expiration time
+	item.expiresAt = (sec * 1000) + time.Now().UnixMilli()
+	p := protocol.Encode(1, false)
+	w.Write(p)
+}
+
 type OKCommand struct{}
 
 func (c *OKCommand) Execute(args []string, w Writer) {
@@ -269,4 +301,5 @@ func init() {
 	RegisterCommand(CmdGet, &EvalGetCommand{})
 	RegisterCommand(CmdDel, &EvalDelCommand{})
 	RegisterCommand(CmdTTL, &EvalTTLCommand{})
+	RegisterCommand(CmdExpire, &EvalExpireCommand{})
 }
